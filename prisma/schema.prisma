@@ -1,0 +1,184 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  AFFILIATE_OWNER
+  REFERRER
+  CLIENT
+}
+
+enum LinkType {
+  STARTER
+  REFERRAL
+}
+
+enum TransactionType {
+  SALE
+  COMMISSION
+  WITHDRAWAL
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      UserRole @default(CLIENT)
+  
+  // Authentication & Profile
+  emailVerified DateTime?
+  image         String?
+  
+  // Affiliate-specific fields
+  affiliatePrograms AffiliateProgram[] @relation("ProgramOwner")
+  referralLinks     ReferralLink[]     @relation("LinkCreator")
+  
+  // Referral and Commission tracking
+  referredUsers    User[]   @relation("UserReferrals")
+  referredBy       User?    @relation("UserReferrals", fields: [referredById], references: [id])
+  referredById     String?
+  
+  // Financial tracking
+  transactions     Transaction[]
+  paymentAccounts  PaymentAccount[]
+  
+  // Tracking links and conversions
+  createdLinks     ReferralLink[]     @relation("CreatedLinks")
+  linkConversions  LinkConversion[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AffiliateProgram {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  
+  // Program specific details
+  baseCommissionRate Float   @default(0.1) // 10% default
+  minimumPayout      Float   @default(50.00)
+  
+  // Owner relationship
+  owner       User     @relation("ProgramOwner", fields: [ownerId], references: [id])
+  ownerId     String
+  
+  // Program links
+  starterLink ReferralLink? @relation("StarterProgramLink")
+  referralLinks ReferralLink[]
+  
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ReferralLink {
+  id          String   @id @default(cuid())
+  uniqueCode  String   @unique
+  
+  // Link relationships
+  creator     User     @relation("LinkCreator", fields: [creatorId], references: [id])
+  creatorId   String
+  
+  program     AffiliateProgram @relation(fields: [programId], references: [id])
+  programId   String
+  
+  // Link type and tracking
+  type        LinkType @default(REFERRAL)
+  isStarter   Boolean  @default(false)
+  
+  // Tracking metrics
+  totalClicks     Int     @default(0)
+  totalConversions Int    @default(0)
+  conversionRate  Float   @default(0)
+  
+  // Commission details
+  commissionRate  Float   @default(0.1) // 10% default
+  
+  // Conversions and tracking
+  linkConversions LinkConversion[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model LinkConversion {
+  id            String   @id @default(cuid())
+  
+  // Conversion tracking
+  referralLink  ReferralLink @relation(fields: [linkId], references: [id])
+  linkId        String
+  
+
+  referrer      User     @relation(fields: [referrerId], references: [id])
+  referrerId    String
+  
+  convertedUser User     @relation(fields: [userId], references: [id])
+  userId        String
+  
+  // Conversion details
+  conversionValue Float
+  commissionEarned Float
+  
+  createdAt     DateTime @default(now())
+}
+
+model Transaction {
+  id              String            @id @default(cuid())
+  
+  // Transaction details
+  type            TransactionType
+  status          TransactionStatus @default(PENDING)
+  
+  // Financial details
+  amount          Float
+  currency        String            @default("NGN")
+  
+  // User relationships
+  user            User              @relation(fields: [userId], references: [id])
+  userId          String=  
+  // Payment gateway reference
+  paymentGatewayRef String?
+  
+  createdAt       DateTime          @default(now())
+}
+
+model PaymentAccount {
+  id              String   @id @default(cuid())
+  
+  // User relationship
+  user            User     @relation(fields: [userId], references: [id])
+  userId          String
+  
+  // Payment gateway details
+  paymentGatewayId String  @unique
+  accountType      String  
+  // Bank or Payout details
+  bankName        String?
+  accountNumber   String?
+  accountName     String?
+  
+  isVerified      Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
